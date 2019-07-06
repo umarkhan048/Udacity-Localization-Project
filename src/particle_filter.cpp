@@ -98,6 +98,22 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    *   during the updateWeights phase.
    */
 
+   for (unsigned int i=0; i < observations.size(); i++){
+	double minDist;
+	int mapID;
+	for (unsigned int j=0; j < predicted.size(); j++){
+		double distance = sqrt(pow((predicted[j].x - observations[i].x), 2) + pow((predicted[j].y - observations[i].y), 2));
+
+	if (j==0){
+		minDist = distance;
+	}
+	else if (distance < minDist) {
+		minDist = distance;
+		mapID = predicted[j].id;
+	}
+	}
+	observations[i].id = mapID;
+   }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
