@@ -93,8 +93,8 @@ class ParticleFilter {
    */
   void SetAssociations(Particle& particle, const std::vector<int>& associations,
                        const std::vector<double>& sense_x, 
-                       const std::vector<double>& sense_y);
-
+                       const std::vector<double>& sense_y); 
+                  
   /**
    * initialized Returns whether particle filter is initialized yet or not.
    */

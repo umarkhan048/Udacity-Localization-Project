@@ -5,8 +5,6 @@
  * Author: Tiffany Huang
  */
 
-#include "particle_filter.h"
-
 #include <math.h>
 #include <algorithm>
 #include <iostream>
@@ -17,6 +15,7 @@
 #include <vector>
 
 #include "helper_functions.h"
+#include "particle_filter.h"
 
 using std::string;
 using std::vector;
@@ -31,7 +30,12 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    * NOTE: Consult particle_filter.h for more information about this method 
    *   (and others in this file).
    */
-  num_particles = 1000;  // TODO: Set the number of particles
+
+  if (is_initialized){
+	return;
+  }
+
+  num_particles = 100;  // TODO: Set the number of particles
 
   std::default_random_engine gen;
 
@@ -132,7 +136,58 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   and the following is a good resource for the actual equation to implement
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
+   
+   // filtering out the landmarks which are out of range from particles view
+   for (int i = 0; i < num_particles; i++){
 
+	vector<LandmarkObs> par_inrange_lm;
+	double x = particles[i].x;
+	double y = particles[i].y;
+	double theta = particles[i].theta;
+
+	for (unsigned int j = 0; j < map_landmarks.landmark_list.size(); j++){
+
+	   double lmX = map_landmarks.landmark_list[j].x_f;
+	   double lmY = map_landmarks.landmark_list[j].y_f;
+	   int lmID = map_landmarks.landmark_list[j].id_i;
+	   // Get landmark to particle distance;
+	   double lm_dist = dist(x, lmX, y, lmY);
+
+	   if (lm_dist <= sensor_range){
+		par_inrange_lm.push_back(LandmarkObs{lmID, lmX, lmY});
+	   }
+	}
+
+	// Transform from vehicle to particle coordinates.
+    	vector<LandmarkObs> transformed_obs;
+    	for(unsigned int j = 0; j < observations.size(); j++) {
+           double transformed_x = cos(theta)*observations[j].x - sin(theta)*observations[j].y + x;
+           double transformed_y = sin(theta)*observations[j].x + cos(theta)*observations[j].y + y;
+           transformed_obs.push_back(LandmarkObs{ observations[j].id, transformed_x, transformed_y });
+    	}
+
+	// Associating observations to landmarks by nearest neighbor method
+	dataAssociation(par_inrange_lm, transformed_obs);
+
+	// Updating weights
+	for (unsigned int k = 0; k < transformed_obs.size(); k++){
+	   double obs_x = transformed_obs[k].x;
+	   double obs_y = transformed_obs[k].y;
+	   double mu_x = par_inrange_lm[k].x;
+	   double mu_y = par_inrange_lm[k].y;
+
+	   double gauss_norm;
+	   gauss_norm = 1/(2 * M_PI * std_landmark[0] * std_landmark[1]);
+
+	   double expon;
+	   expon = (pow(obs_x - mu_x,2) / (2*pow(std_landmark[0],2))) + (pow(obs_y - mu_y,2) / (2*pow(std_landmark[1],2)));
+
+	   double weight;
+	   weight = gauss_norm * exp(expon);
+	   particles[i].weight = weight;
+	}
+
+   }	
 }
 
 void ParticleFilter::resample() {
