@@ -13,7 +13,6 @@
 #include <random>
 #include <string>
 #include <vector>
-
 #include "helper_functions.h"
 #include "particle_filter.h"
 
@@ -198,6 +197,42 @@ void ParticleFilter::resample() {
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
 
+   // Get weights and max weight.
+
+   double max_weight;
+   vector<double> par_weights;
+
+   // find max weight
+   for (unsigned int i = 0; i < num_particles; i++){
+	par_weights.push_back(particles[i].weight);
+
+	if (particles[i].weight > max_weight){
+	   max_weight = particles[i].weight;
+	}
+   }
+
+   double beta = 0.0;
+   std::default_random_engine gen;
+   // for 2 * random(0-> max_weight) * max_weight 
+   std::uniform_real_distribution<double> random_double(0.0, max_weight);
+
+   // generate indexes
+   std::uniform_int_distribution<int> index_distrib(0, num_particles-1);
+
+   int index = index_distrib(gen);
+
+   // vector for resampled particles
+   vector<Particle> resamp_particles;
+ 
+   for (unsigned int j = 0; j < num_particles; j++){
+	beta = beta + random_double(gen) * 2.0;
+	while (beta > weights[index]){
+	   beta -= par_weights[index];
+	   index = (index + 1) % num_particles;
+	}
+	resamp_particles.push_back(particles[index]);
+   }
+   particles = resamp_particles; 
 }
 
 void ParticleFilter::SetAssociations(Particle& particle, 
