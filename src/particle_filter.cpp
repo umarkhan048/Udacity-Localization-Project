@@ -36,6 +36,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   }
 
   num_particles = 100;  // TODO: Set the number of particles
+  particles.resize(num_particles);
+  weights.resize(num_particles);
 
   std::default_random_engine gen;
 
@@ -53,6 +55,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     par.weight = 1.0;
    
     particles.push_back(par);
+    weights[i] = 1.0;
   }
   is_initialized = true;
 }
@@ -101,23 +104,6 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    *   probably find it useful to implement this method and use it as a helper 
    *   during the updateWeights phase.
    */
-
-   for (unsigned int i=0; i < observations.size(); i++){
-	double minDist;
-	int mapID;
-	for (unsigned int j=0; j < predicted.size(); j++){
-		double distance = sqrt(pow((predicted[j].x - observations[i].x), 2) + pow((predicted[j].y - observations[i].y), 2));
-
-	if (j==0){
-		minDist = distance;
-	}
-	else if (distance < minDist) {
-		minDist = distance;
-		mapID = predicted[j].id;
-	}
-	}
-	observations[i].id = mapID;
-   }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -139,57 +125,70 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    
    // filtering out the landmarks which are out of range from particles view
   
+   double x_p, y_p, theta_p, weight, x_m, y_m, x_c, y_c;
+   double mu_x, mu_y, expon;
+   double sig_x = std_landmark[0];
+   double sig_y = std_landmark[1];
+   double gauss_norm = 1 / (2*M_PI*sig_x*sig_y);
+
    for (int i = 0; i < num_particles; i++){
 
-	vector<LandmarkObs> par_inrange_lm;
-	double x = particles[i].x;
-	double y = particles[i].y;
-	double theta = particles[i].theta;
+     x_p = particles[i].x;
+     y_p = particles[i].y;
+     theta_p = particles[i].theta;
+     weight = 1.0;
 
-	for (unsigned int j = 0; j < map_landmarks.landmark_list.size(); j++){
-	   double lmX = map_landmarks.landmark_list[j].x_f;
-	   double lmY = map_landmarks.landmark_list[j].y_f;
-	   int lmID = map_landmarks.landmark_list[j].id_i;
-      
-      if(fabs(lmX - x) <= sensor_range && fabs(lmY - y) <= sensor_range) {
-			par_inrange_lm.push_back(LandmarkObs{ lmID, lmX, lmY });
+     vector<LandmarkObs> nearby_lms;
+     LandmarkObs nearby_lm;
+
+     //Getting the landmarks in sensor range
+     for (unsigned int j = 0; j < map_landmarks.landmark_list.size(); j++){
+       double lm_x = map_landmarks.landmark_list[j].x_f;
+       double lm_y = map_landmarks.landmark_list[j].y_f;
+       int lm_id = map_landmarks.landmark_list[j].id_i;
+       double lm_dist = dist(x_p, y_p, lm_x, lm_y);
+       
+       if (lm_dist < sensor_range){
+         nearby_lm.id = lm_id;
+         nearby_lm.x = lm_x;
+         nearby_lm.y = lm_y;
+         nearby_lms.push_back(nearby_lm);
+       }		
+     }
+
+     // Transform from vehicle to particle coordinates.
+     //vector<LandmarkObs> transformed_obs;
+     for(unsigned int k = 0; k < observations.size(); k++) {
+       x_c = observations[k].x;
+       y_c = observations[k].y;
+       x_m = cos(theta_p) * x_c - sin(theta_p) * y_c + x_p;
+       y_m = sin(theta_p) * x_c + cos(theta_p) * y_c + y_p;
+
+       double obs_min_dist = 999;
+       int min_obs_index = 0;
+       
+       for (unsigned int l = 0; l < nearby_lms.size(); l++){
+         double obs_to_lm = dist(x_m, y_m, nearby_lms[l].x, nearby_lms[l].y);
+         if (obs_to_lm < obs_min_dist){
+           min_obs_index = nearby_lms[l].id;
+           obs_min_dist = obs_to_lm;
+         }
+       }
+
+       // Getting the nearest landmarks position
+       for (unsigned int m = 0; m < nearby_lms.size(); m++){
+         if (nearby_lms[m].id == min_obs_index){
+           mu_x = nearby_lms[m].x;
+           mu_y = nearby_lms[m].y;
+           break;
+         }
+       }
+
+       expon = pow(x_m-mu_x,2)/(2*pow(sig_x,2))+ pow(y_m-mu_y,2)/(2*pow(sig_y,2));
+       weight *= gauss_norm * exp(-expon);
       }
-	   // Get landmark to particle distance;
-	   //double lm_dist = dist(x, lmX, y, lmY);
-	   //if (lm_dist <= sensor_range){
-		//par_inrange_lm.push_back(LandmarkObs{lmID, lmX, lmY});
-	   //} 
-	}
-
-	// Transform from vehicle to particle coordinates.
-    	vector<LandmarkObs> transformed_obs;
-    	for(unsigned int j = 0; j < observations.size(); j++) {
-           double transformed_x = cos(theta)*observations[j].x - sin(theta)*observations[j].y + x;
-           double transformed_y = sin(theta)*observations[j].x + cos(theta)*observations[j].y + y;
-           transformed_obs.push_back(LandmarkObs{ observations[j].id, transformed_x, transformed_y });
-    	}
-
-	// Associating observations to landmarks by nearest neighbor method
-	//dataAssociation(par_inrange_lm, transformed_obs);
-	
-	// Updating weights
-	for (unsigned int k = 0; k < transformed_obs.size(); k++){
-	   double obs_x = transformed_obs[k].x;
-	   double obs_y = transformed_obs[k].y;
-	   double mu_x = par_inrange_lm[k].x;
-	   double mu_y = par_inrange_lm[k].y;
-
-	   double gauss_norm;
-	   gauss_norm = 1/(2 * M_PI * std_landmark[0] * std_landmark[1]);
-	   double expon;
-	   expon = (pow(obs_x - mu_x,2) / (2*pow(std_landmark[0],2))) + (pow(obs_y - mu_y,2) / (2*pow(std_landmark[1],2)));
-      std::cout << expon << "\n" << std::flush;
-	   double weight;
-	   weight = gauss_norm * exp(expon);
-      
-	   particles[i].weight *= weight;
-      
-	}
+      particles[i].weight = weight;
+      weights[i] = weight;
    }	
 }
 
@@ -201,33 +200,21 @@ void ParticleFilter::resample() {
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
 
-   std::default_random_engine gen;
-  
-  //Get weights and max weight.
-	vector<double> weights;
-	double maxWeight = std::numeric_limits<double>::min();
-	for(int i = 0; i < num_particles; i++) {
-		weights.push_back(particles[i].weight);
-		if(particles[i].weight > maxWeight) {
-			maxWeight = particles[i].weight;
-		}
-	}
+   vector<Particle> resampled_particles (num_particles);
 
-	std::uniform_real_distribution<double> distDouble(0.0, maxWeight);
-	std::uniform_int_distribution<int> distInt(0, num_particles - 1);
-	int index = distInt(gen);
-	double beta = 0.0;
-	vector<Particle> resampledParticles;
-	for(int i = 0; i < num_particles; i++) {
-		beta += distDouble(gen) * 2.0;
-		while(beta > weights[index]) {
-			beta -= weights[index];
-			index = (index + 1) % num_particles;
-		}
-		resampledParticles.push_back(particles[index]);
-	}
+   double beta = 0;
+   int ind = rand() % num_particles;
+   double w_max = *max_element(weights.begin(), weights.end());
 
-	particles = resampledParticles;
+   for (int i = 0; i < num_particles; i++){
+     beta = beta * (rand() / (RAND_MAX + 1.0)) * (2*w_max);
+     while(weights[ind]<beta){
+            beta -= weights[ind];
+            ind = (ind+1) % num_particles;
+     }
+     resampled_particles[i] = particles[ind];
+   }
+   particles = resampled_particles;
 }
 
 void ParticleFilter::SetAssociations(Particle& particle, 
