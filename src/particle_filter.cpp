@@ -77,7 +77,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
 
    // In case of unchanging yaw rate (division by zero will happen)
    for (int i = 0; i < num_particles; i++){
-     if (fabs(yaw_rate) < 0.00001){
+     if (fabs(yaw_rate) < 0.0001){
         particles[i].x += velocity * delta_t * cos(particles[i].theta);
         particles[i].y += velocity * delta_t * sin(particles[i].theta);
      }
@@ -185,7 +185,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
        }
 
        expon = pow(x_m-mu_x,2)/(2*pow(sig_x,2))+ pow(y_m-mu_y,2)/(2*pow(sig_y,2));
-       weight *= gauss_norm * exp(-expon);
+       weight = gauss_norm * exp(-expon);
       }
       particles[i].weight = weight;
       weights[i] = weight;
@@ -207,7 +207,7 @@ void ParticleFilter::resample() {
    double w_max = *max_element(weights.begin(), weights.end());
 
    for (int i = 0; i < num_particles; i++){
-     beta = beta * (rand() / (RAND_MAX + 1.0)) * (2*w_max);
+     beta += (rand() / (RAND_MAX + 1.0)) * (2*w_max);
      while(weights[ind]<beta){
             beta -= weights[ind];
             ind = (ind+1) % num_particles;
